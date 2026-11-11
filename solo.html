@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<title>記憶德州・單人練習</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: felt table — 4×4 memory board on the left, community cards + controls + results on the right; stacks on phones. Single committed dark look. */
+:root{
+  color-scheme: dark;
+  --felt:#0e3634;
+  --felt-deep:#082422;
+  --line:rgba(201,162,74,.28);
+  --brass:#c9a24a;
+  --brass-soft:#e2c98a;
+  --paper:#f8f6f0;
+  --ink:#1c2226;
+  --suit-red:#c0261c;
+  --text:#e9eee9;
+  --muted:#9fb5b0;
+  --good:#6fcf97;
+  --font-display:"DM Serif Display", "Noto Serif TC", Georgia, serif;
+  --font-body:"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  background:radial-gradient(120% 90% at 30% 10%, var(--felt) 0%, var(--felt-deep) 75%) fixed, var(--felt-deep);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:15px; line-height:1.6;
+}
+.wrap{
+  max-width:1080px; margin:0 auto;
+  padding-block:28px 48px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex; flex-direction:column; gap:22px;
+}
+header{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap}
+h1{font-family:var(--font-display); font-weight:400; font-size:clamp(30px,5vw,44px); margin:0; letter-spacing:.01em}
+h1 em{font-style:normal; color:var(--brass)}
+.record{font-family:var(--font-mono); font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; display:flex; gap:16px; flex-wrap:wrap}
+.record b{color:var(--brass-soft); font-weight:600; font-family:var(--font-body)}
+
+.table{display:grid; grid-template-columns:minmax(0,480px) minmax(0,1fr); gap:28px; align-items:start}
+@media (max-width:820px){ .table{grid-template-columns:minmax(0,1fr)} }
+
+/* Board */
+.board-wrap{display:flex; flex-direction:column; gap:12px; position:relative}
+.status{display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:14px; color:var(--muted); min-height:24px}
+.status strong{color:var(--text); font-weight:500}
+.timer{font-family:var(--font-mono); font-size:22px; color:var(--brass-soft); font-variant-numeric:tabular-nums}
+.bar{height:3px; background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden}
+.bar i{display:block; height:100%; width:100%; background:var(--brass); transform-origin:left; transition:transform .1s linear}
+.board{
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px 10px;
+  padding:16px 14px 14px; border-radius:14px; position:relative;
+  background:rgba(0,0,0,.18);
+  box-shadow:inset 0 0 0 1px var(--line);
+}
+
+/* Card */
+.card{
+  appearance:none; border:0; padding:0; background:none; cursor:pointer;
+  aspect-ratio:5/7; width:100%; max-width:100%;
+  perspective:800px; position:relative; border-radius:7px;
+  font:inherit; color:inherit;
+}
+.card:disabled{cursor:default}
+.card:focus-visible{outline:2px solid var(--brass-soft); outline-offset:3px}
+.inner{position:absolute; inset:0; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.3,.7,.2,1)}
+.card.down .inner{transform:rotateY(180deg)}
+.face{position:absolute; inset:0; border-radius:7px; backface-visibility:hidden; -webkit-backface-visibility:hidden; overflow:hidden; container-type:size}
+.front{background:var(--paper); color:var(--ink); box-shadow:0 2px 0 rgba(0,0,0,.25), 0 6px 14px rgba(0,0,0,.25)}
+.front.r{color:var(--suit-red)}
+
+/* Corner indices, top-left and rotated bottom-right, as on a standard deck */
+.idx{position:absolute; top:4%; left:4%; width:18cqw; display:flex; flex-direction:column; align-items:center; line-height:.95}
+.idx.br{top:auto; left:auto; bottom:4%; right:4%; transform:rotate(180deg)}
+.idx .rk{font-family:var(--font-display); font-size:19cqw}
+.idx .rk.ten{font-size:16cqw; letter-spacing:-.06em}
+.idx .st{font-size:14cqw; margin-top:1cqw}
+
+/* Pips laid out in the standard positions */
+.pips{position:absolute; inset:13% 27%}
+.pips span{position:absolute; transform:translate(-50%,-50%); font-size:18cqw; line-height:1}
+.pips span.inv{transform:translate(-50%,-50%) rotate(180deg)}
+.pips.ace span{font-size:42cqw}
+
+/* Court cards: framed panel, mirrored halves */
+.court{
+  position:absolute; inset:12% 22%;
+  border:1px solid currentColor; border-radius:3px; overflow:hidden;
+  background:color-mix(in srgb, currentColor 6%, transparent);
+}
+.court svg{display:block; width:100%; height:100%}
+
+.back{
+  transform:rotateY(180deg);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 7px, rgba(201,162,74,.22) 7px 8px),
+    repeating-linear-gradient(-45deg, transparent 0 7px, rgba(201,162,74,.22) 7px 8px),
+    #123f3c;
+  box-shadow:inset 0 0 0 3px #0b2c2a, inset 0 0 0 4px var(--brass), 0 2px 0 rgba(0,0,0,.3), 0 6px 14px rgba(0,0,0,.25);
+  display:grid; place-items:center;
+}
+.back .letter{
+  font-family:var(--font-mono); font-weight:600; font-size:30cqw;
+  color:var(--brass-soft); background:#0b2c2a; border:1px solid var(--brass);
+  width:54%; aspect-ratio:1; border-radius:50%; display:grid; place-items:center;
+  transition:opacity .3s;
+}
+.idle .back .letter{opacity:.35}
+
+/* Letter badge shown after the reveal, outside the flipping layer */
+.badge{
+  position:absolute; top:-9px; left:50%; transform:translateX(-50%); z-index:2;
+  font-family:var(--font-mono); font-weight:600; font-size:11px; line-height:18px;
+  min-width:20px; padding:0 5px; text-align:center; border-radius:9px;
+  background:#0b2c2a; color:var(--brass-soft); border:1px solid var(--line);
+  opacity:0; transition:opacity .3s; pointer-events:none;
+}
+.show-tags .badge{opacity:1}
+
+.card.sel .inner{transform:rotateY(180deg) translateY(-6%)}
+.card.sel .back{box-shadow:inset 0 0 0 3px #0b2c2a, inset 0 0 0 4px var(--brass), 0 0 0 3px var(--brass-soft), 0 10px 20px rgba(0,0,0,.4)}
+.card.sel .back .letter{background:var(--brass); color:#0b2c2a}
+.card.mine .front{box-shadow:0 0 0 3px var(--brass), 0 8px 18px rgba(0,0,0,.35)}
+.card.mine .badge{background:var(--brass); color:#0b2c2a; border-color:var(--brass)}
+.card.best .front{box-shadow:0 0 0 3px var(--good), 0 8px 18px rgba(0,0,0,.35)}
+.card.best .badge{background:var(--good); color:#0b2c2a; border-color:var(--good)}
+.card.dim .front{filter:saturate(.55) brightness(.7)}
+
+/* Hand announcement over the board */
+.announce{
+  position:absolute; inset:0; z-index:5; display:grid; place-items:center;
+  background:rgba(4,20,19,.72); border-radius:14px; cursor:pointer;
+  animation:fade .3s ease-out;
+}
+.announce .box{text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center; padding:20px}
+.announce .k{font-size:13px; letter-spacing:.2em; color:var(--muted)}
+.announce .h{font-family:var(--font-display); font-size:clamp(40px,11vw,64px); line-height:1.1; color:var(--paper); animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+.announce .d{color:var(--brass-soft); font-size:15px}
+.announce .tap{font-size:12px; color:var(--muted); margin-top:8px}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{from{transform:scale(.7); opacity:0}}
+
+/* Side panel */
+.side{display:flex; flex-direction:column; gap:22px; min-width:0}
+.label{font-size:12px; letter-spacing:.14em; color:var(--muted); margin:0 0 10px}
+.community{display:grid; grid-template-columns:repeat(3,minmax(0,96px)); gap:10px}
+.community .card{cursor:default}
+
+.actions{display:flex; gap:10px; flex-wrap:wrap}
+.btn{
+  appearance:none; font:inherit; font-weight:500; font-size:15px;
+  padding:11px 22px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--brass); background:var(--brass); color:#0b2c2a;
+  transition:transform .15s, opacity .2s, background .2s;
+}
+.btn:hover:not(:disabled){background:var(--brass-soft)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.35; cursor:not-allowed}
+.btn.ghost{background:transparent; color:var(--brass-soft)}
+.btn.ghost:hover:not(:disabled){background:rgba(201,162,74,.12)}
+.btn:focus-visible{outline:2px solid var(--brass-soft); outline-offset:3px}
+
+.result{border-top:1px solid var(--line); padding-top:16px; display:flex; flex-direction:column; gap:6px; min-height:84px}
+.result .hand{font-family:var(--font-display); font-size:32px; line-height:1.2; color:var(--paper)}
+.result .sub{color:var(--muted); font-size:14px}
+.result .sub b{color:var(--text); font-weight:500}
+.verdict{font-size:14px; font-weight:500}
+.verdict.ok{color:var(--good)}
+.verdict.miss{color:var(--brass-soft)}
+
+/* Top five */
+.top5{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px}
+.top5 li{
+  display:grid; grid-template-columns:28px 64px minmax(0,1fr); gap:10px; align-items:baseline;
+  padding:8px 10px; border-radius:8px; background:rgba(0,0,0,.16); font-size:14px;
+}
+.top5 .no{font-family:var(--font-mono); color:var(--muted); font-variant-numeric:tabular-nums}
+.top5 .pair{font-family:var(--font-mono); font-weight:600; color:var(--brass-soft)}
+.top5 .what{min-width:0}
+.top5 .what b{font-weight:500; color:var(--paper)}
+.top5 .what span{color:var(--muted); font-size:13px; margin-left:6px}
+.top5 li.first{box-shadow:inset 0 0 0 1px var(--good)}
+.top5 li.you{background:rgba(201,162,74,.2)}
+.top5 li.you .no::after{content:"你"; font-family:var(--font-body); font-size:11px; color:#0b2c2a; background:var(--brass); border-radius:3px; padding:0 3px; margin-left:3px; vertical-align:1px}
+.top5 li.gap{background:none; padding:0 10px; color:var(--muted); font-size:12px; display:block}
+.empty{font-size:13px; color:var(--muted); margin:0}
+
+.ladder{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:2px 18px; font-size:13px}
+@media (max-width:420px){ .ladder{grid-template-columns:1fr} }
+.ladder li{display:flex; justify-content:space-between; gap:8px; padding:4px 8px; border-radius:6px; color:var(--muted)}
+.ladder li span:last-child{font-family:var(--font-mono); font-size:12px; opacity:.7}
+.ladder li.mine{background:rgba(201,162,74,.18); color:var(--paper)}
+.ladder li.best{box-shadow:inset 0 0 0 1px var(--good); color:var(--paper)}
+.legend{display:flex; gap:16px; font-size:12px; color:var(--muted); flex-wrap:wrap}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+.rules{font-size:13px; color:var(--muted); margin:0; padding-left:18px}
+.rules li{margin:2px 0}
+kbd{font-family:var(--font-mono); font-size:12px; border:1px solid var(--line); border-radius:4px; padding:0 5px; color:var(--brass-soft)}
+
+.dock{display:flex; flex-direction:column; gap:22px}
+.result{scroll-margin-top:120px}
+/* Phones: community cards and buttons dock above the board and stay pinned while scrolling */
+@media (max-width:820px){
+  .table{display:flex; flex-direction:column; gap:18px}
+  .side{display:contents}
+  .dock{
+    order:-1; position:sticky; top:env(safe-area-inset-top, 0px); z-index:6;
+    flex-direction:row; align-items:flex-end; justify-content:space-between; gap:12px;
+    padding:10px 12px; border-radius:12px;
+    background:var(--felt-deep); box-shadow:0 0 0 1px var(--line), 0 8px 18px rgba(0,0,0,.35);
+  }
+  .dock .label{margin-bottom:6px}
+  .community{grid-template-columns:repeat(3,minmax(0,58px)); gap:6px}
+  .actions{flex-direction:column; align-items:stretch; gap:6px}
+  .actions .btn{padding:9px 16px; font-size:14px}
+  body::before{content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top, 0px); z-index:10; background:var(--felt-deep)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .inner,.bar i{transition:none}
+  .announce,.announce .h{animation:none}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>記憶<em>德州</em></h1>
+    <div class="record" aria-live="polite">
+      <span>局數 <b id="rounds">0</b></span>
+      <span>最佳解 <b id="perfect">0</b></span>
+      <span>最佳牌型 <b id="topHand">—</b></span>
+      <a href="./" style="color:var(--brass-soft)">多人模式</a>
+    </div>
+  </header>
+
+  <div class="table">
+    <section class="board-wrap" aria-label="記憶牌桌">
+      <div class="status">
+        <span id="status"><strong>按「發牌」開始</strong>，16 張牌會翻開 20 秒</span>
+        <span class="timer" id="timer"></span>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+      <div class="board idle" id="board"></div>
+    </section>
+
+    <aside class="side">
+      <div class="dock">
+        <div>
+          <p class="label">公牌</p>
+          <div class="community" id="community"></div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="primary" type="button">發牌</button>
+          <button class="btn ghost" id="clear" type="button" hidden>取消選擇</button>
+        </div>
+      </div>
+
+      <div class="result" id="result" aria-live="polite">
+        <ol class="rules">
+          <li>16 張牌翻開 20 秒，記住位置</li>
+          <li>牌翻回背面，以 A–P 標示，接著亮出 3 張公牌</li>
+          <li>選 2 張牌與公牌組成 5 張，比德州撲克牌型</li>
+          <li>鍵盤可直接按 <kbd>A</kbd>–<kbd>P</kbd> 選牌，<kbd>Enter</kbd> 確認</li>
+        </ol>
+      </div>
+
+      <div>
+        <p class="label">本局前五名</p>
+        <ol class="top5" id="top5"></ol>
+        <p class="empty" id="top5empty">開牌後列出 16 張中最強的 5 組兩張牌。</p>
+      </div>
+
+      <div>
+        <p class="label">牌型大小</p>
+        <ul class="ladder" id="ladder"></ul>
+        <div class="legend" style="margin-top:10px">
+          <span><i style="background:var(--brass)"></i>你的選擇</span>
+          <span><i style="background:var(--good)"></i>本局第一名</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  const MEMO_SECONDS = 20;
+  const LETTERS = "ABCDEFGHIJKLMNOP".split("");
+  const SUITS = [{s:"♠",red:false},{s:"♥",red:true},{s:"♦",red:true},{s:"♣",red:false}];
+  const RANK_TXT = {11:"J",12:"Q",13:"K",14:"A"};
+  const HANDS = ["高牌","一對","兩對","三條","順子","同花","葫蘆","四條","同花順","皇家同花順"];
+
+  // Standard pip positions: [x, y, inverted] inside the pip box (0–100)
+  const L = 0, C = 50, R = 100;
+  const PIPS = {
+    2:[[C,0],[C,100,1]],
+    3:[[C,0],[C,50],[C,100,1]],
+    4:[[L,0],[R,0],[L,100,1],[R,100,1]],
+    5:[[L,0],[R,0],[C,50],[L,100,1],[R,100,1]],
+    6:[[L,0],[R,0],[L,50],[R,50],[L,100,1],[R,100,1]],
+    7:[[L,0],[R,0],[C,25],[L,50],[R,50],[L,100,1],[R,100,1]],
+    8:[[L,0],[R,0],[C,25],[L,50],[R,50],[C,75,1],[L,100,1],[R,100,1]],
+    9:[[L,0],[R,0],[L,33.3],[R,33.3],[C,50],[L,66.7,1],[R,66.7,1],[L,100,1],[R,100,1]],
+    10:[[L,0],[R,0],[C,16.7],[L,33.3],[R,33.3],[L,66.7,1],[R,66.7,1],[C,83.3,1],[L,100,1],[R,100,1]]
+  };
+
+  const $ = id => document.getElementById(id);
+  const boardEl = $("board"), commEl = $("community"), statusEl = $("status"),
+        timerEl = $("timer"), barEl = $("bar"), primary = $("primary"),
+        clearBtn = $("clear"), resultEl = $("result"), ladderEl = $("ladder"),
+        top5El = $("top5"), top5Empty = $("top5empty"), wrapEl = boardEl.parentElement;
+
+  let state = "idle", grid = [], community = [], picks = [], timerId = null, endAt = 0, pending = null;
+  const stats = {rounds:0, perfect:0, top:-1};
+
+  // ---------- deck ----------
+  function deck(){
+    const d = [];
+    for (let s = 0; s < 4; s++) for (let r = 2; r <= 14; r++) d.push({r, s});
+    for (let i = d.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [d[i],d[j]] = [d[j],d[i]]; }
+    return d;
+  }
+  const rankTxt = r => RANK_TXT[r] || String(r);
+  const cardName = c => SUITS[c.s].s + rankTxt(c.r);
+
+  // ---------- hand evaluation (5 cards) ----------
+  function evaluate(cards){
+    const rs = cards.map(c => c.r).sort((a,b) => b-a);
+    const flush = cards.every(c => c.s === cards[0].s);
+    const uniq = [...new Set(rs)];
+    let straightTop = 0;
+    if (uniq.length === 5){
+      if (uniq[0] - uniq[4] === 4) straightTop = uniq[0];
+      else if (uniq.join() === "14,5,4,3,2") straightTop = 5;
+    }
+    const cnt = {}; rs.forEach(r => cnt[r] = (cnt[r]||0) + 1);
+    const groups = Object.entries(cnt).map(([r,n]) => [n, +r]).sort((a,b) => b[0]-a[0] || b[1]-a[1]);
+    const shape = groups.map(g => g[0]).join("");
+    const kick = groups.map(g => g[1]);
+    let cat;
+    if (straightTop && flush) cat = straightTop === 14 ? 9 : 8;
+    else if (shape === "41") cat = 7;
+    else if (shape === "32") cat = 6;
+    else if (flush) cat = 5;
+    else if (straightTop) cat = 4;
+    else if (shape === "311") cat = 3;
+    else if (shape === "221") cat = 2;
+    else if (shape === "2111") cat = 1;
+    else cat = 0;
+    const tb = (cat === 8 || cat === 9 || cat === 4) ? [straightTop] : kick;
+    return {cat, score:[cat, ...tb]};
+  }
+  function cmp(a, b){
+    for (let i = 0; i < Math.max(a.length, b.length); i++){
+      const d = (a[i]||0) - (b[i]||0); if (d) return d;
+    }
+    return 0;
+  }
+  // All 120 two-card picks, strongest first, with tie-aware ranks (1,2,2,4…)
+  function rankAll(){
+    const all = [];
+    for (let i = 0; i < 16; i++) for (let j = i+1; j < 16; j++)
+      all.push({i, j, e:evaluate([grid[i], grid[j], ...community])});
+    all.sort((a,b) => cmp(b.e.score, a.e.score));
+    all.forEach((p,k) => p.rank = (k && cmp(p.e.score, all[k-1].e.score) === 0) ? all[k-1].rank : k+1);
+    return all;
+  }
+  function describe(e){
+    const [cat, ...t] = e.score, n = t.map(rankTxt);
+    switch(cat){
+      case 9: return "10 到 A 同一花色";
+      case 8: case 4: return `${n[0]} 為頂`;
+      case 7: return `四張 ${n[0]}，踢腳 ${n[1]}`;
+      case 6: return `${n[0]} 三條帶 ${n[1]} 一對`;
+      case 5: return `最大 ${n[0]}`;
+      case 3: return `三張 ${n[0]}`;
+      case 2: return `${n[0]}、${n[1]} 兩對，踢腳 ${n[2]}`;
+      case 1: return `一對 ${n[0]}`;
+      default: return `最大 ${n[0]}`;
+    }
+  }
+
+  // ---------- rendering ----------
+  function frontHTML(c){
+    const suit = SUITS[c.s].s, rk = rankTxt(c.r);
+    const idx = cls => `<div class="idx ${cls}"><span class="rk ${c.r===10?"ten":""}">${rk}</span><span class="st">${suit}</span></div>`;
+    let body;
+    if (c.r === 14){
+      body = `<div class="pips ace"><span style="left:50%;top:50%">${suit}</span></div>`;
+    } else if (c.r >= 11){
+      const g = figure(c.r, suit);
+      body = `<div class="court"><svg viewBox="0 0 60 114" aria-hidden="true">${g}<g transform="rotate(180 30 57)">${g}</g><line x1="0" y1="57" x2="60" y2="57" stroke="currentColor" stroke-width=".8" opacity=".5"/></svg></div>`;
+    } else {
+      body = `<div class="pips">${PIPS[c.r].map(([x,y,inv]) =>
+        `<span class="${inv?"inv":""}" style="left:${x}%;top:${y}%">${suit}</span>`).join("")}</div>`;
+    }
+    return `<div class="face front ${SUITS[c.s].red ? "r" : ""}">${idx("tl")}${body}${idx("br")}</div>`;
+  }
+  // Court figures: one half drawn in a 60×57 box, mirrored for the bottom half
+  function figure(r, suit){
+    const HAIR="#3a2a1f", SKIN="#f2d5b8", GOLD="#d4a640", BLUE="#2f5d8a", PAPER="#f8f6f0";
+    const robe = `<path d="M4 57 C6 46 14 40 22 40 L38 40 C46 40 54 46 56 57 Z" fill="currentColor"/>
+      <path d="M12 57 C14 50 18 46 22 45 M48 57 C46 50 42 46 38 45" stroke="${GOLD}" stroke-width="1.4" fill="none"/>
+      <rect x="27" y="33" width="6" height="8" fill="${SKIN}"/>
+      <path d="M21 40 L30 49 L39 40 Z" fill="${PAPER}" stroke="currentColor" stroke-width=".7"/>`;
+    const face = `<ellipse cx="30" cy="26" rx="8.5" ry="10" fill="${SKIN}" stroke="${HAIR}" stroke-width=".6"/>
+      <circle cx="26.8" cy="25" r=".95" fill="${HAIR}"/><circle cx="33.2" cy="25" r=".95" fill="${HAIR}"/>
+      <path d="M30 26 L28.9 30 L31.1 30" stroke="${HAIR}" stroke-width=".6" fill="none"/>`;
+    const mouth = col => `<path d="M27.6 32.4 Q30 34 32.4 32.4" stroke="${col}" stroke-width=".9" fill="none"/>`;
+    const emblem = `<text x="47" y="54" font-size="9" text-anchor="middle" fill="${PAPER}">${suit}</text>`;
+    if (r === 13){ // King: crown and beard
+      return robe + `<path d="M21 22 Q19 34 24 36 L24 22 Z M39 22 Q41 34 36 36 L36 22 Z" fill="${HAIR}"/>` + face
+        + `<path d="M22 29 Q22 42 30 43 Q38 42 38 29 Q34 34.5 30 34.5 Q26 34.5 22 29 Z" fill="${HAIR}"/>
+           <path d="M26 31.5 Q30 29.5 34 31.5" stroke="${HAIR}" stroke-width="1.6" fill="none"/>
+           <path d="M20 17 L20 6 L24 11 L27 3.5 L30 10 L33 3.5 L36 11 L40 6 L40 17 Z" fill="${GOLD}" stroke="${HAIR}" stroke-width=".6"/>
+           <circle cx="30" cy="14" r="1.6" fill="currentColor"/>` + emblem;
+    }
+    if (r === 12){ // Queen: long hair, tiara, flower
+      return robe + `<path d="M20 27 Q19 14 30 13 Q41 14 40 27 L43 43 Q36 39 37 29 Q30 19 23 29 Q24 39 17 43 Z" fill="${HAIR}"/>` + face + mouth("currentColor")
+        + `<path d="M22.5 16 Q30 7 37.5 16 L35.5 17.5 Q30 12.5 24.5 17.5 Z" fill="${GOLD}" stroke="${HAIR}" stroke-width=".5"/>
+           <circle cx="30" cy="10.6" r="1.5" fill="currentColor"/>
+           <path d="M14 55 L17 45" stroke="#3d6b3d" stroke-width="1.2"/>
+           <circle cx="17.5" cy="43.5" r="3.2" fill="${GOLD}" stroke="${HAIR}" stroke-width=".5"/>
+           <circle cx="17.5" cy="43.5" r="1.2" fill="currentColor"/>` + emblem;
+    }
+    // Jack: feathered cap, short hair
+    return robe + face + mouth(HAIR)
+      + `<path d="M21.5 24 Q22 15.5 30 15.5 Q38 15.5 38.5 24 Q35 19.5 30 20.5 Q25 19.5 21.5 24 Z" fill="${HAIR}"/>
+         <ellipse cx="30" cy="11" rx="10" ry="5.5" fill="${BLUE}"/>
+         <rect x="19" y="12" width="22" height="5" rx="2" fill="${BLUE}" stroke="${GOLD}" stroke-width=".8"/>
+         <path d="M38 12 Q49 1 53 7 Q47 10 40 15 Z" fill="currentColor"/>` + emblem;
+  }
+
+  function makeCard(c, letter, faceUp){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "card" + (faceUp ? "" : " down");
+    b.innerHTML = `<div class="inner">${frontHTML(c)}<div class="face back">${letter ? `<span class="letter">${letter}</span>` : ""}</div></div>`
+      + (letter ? `<span class="badge">${letter}</span>` : "");
+    return b;
+  }
+  function renderLadder(mine = -1, best = -1){
+    ladderEl.innerHTML = HANDS.map((h,i) => ({h,i})).reverse().map(({h,i}) =>
+      `<li class="${i===mine?"mine":""} ${i===best?"best":""}"><span>${h}</span><span>${String(10-i).padStart(2,"0")}</span></li>`
+    ).join("");
+  }
+  function resetTop5(){ top5El.innerHTML = ""; top5Empty.hidden = false; }
+
+  function deal(){
+    const d = deck();
+    grid = d.slice(0,16);
+    community = d.slice(16,19);
+    picks = [];
+    boardEl.innerHTML = "";
+    boardEl.classList.remove("idle","show-tags");
+    grid.forEach((c,i) => {
+      const el = makeCard(c, LETTERS[i], true);
+      el.setAttribute("aria-label", `位置 ${LETTERS[i]}`);
+      el.disabled = true;
+      el.addEventListener("click", () => toggle(i));
+      boardEl.appendChild(el);
+    });
+    commEl.innerHTML = "";
+    community.forEach(c => { const el = makeCard(c, "", false); el.disabled = true; el.tabIndex = -1; commEl.appendChild(el); });
+    renderLadder();
+    resetTop5();
+    resultEl.innerHTML = `<div class="sub">記住每張牌的位置，時間到會蓋牌。</div>`;
+  }
+
+  function startMemorize(){
+    closeAnnounce(true);
+    deal();
+    state = "memorize";
+    endAt = Date.now() + MEMO_SECONDS*1000;
+    primary.textContent = "提前蓋牌";
+    primary.disabled = false;
+    clearBtn.hidden = true;
+    tick();
+    clearInterval(timerId);
+    timerId = setInterval(tick, 100);
+  }
+  function tick(){
+    const left = Math.max(0, endAt - Date.now());
+    timerEl.textContent = (left/1000).toFixed(1);
+    barEl.style.transform = `scaleX(${left/(MEMO_SECONDS*1000)})`;
+    statusEl.innerHTML = `<strong>記憶中</strong>，時間到全部蓋牌`;
+    if (left <= 0) flipDown();
+  }
+  function flipDown(){
+    clearInterval(timerId);
+    state = "select";
+    timerEl.textContent = "";
+    barEl.style.transform = "scaleX(0)";
+    [...boardEl.children].forEach(el => { el.classList.add("down"); el.disabled = false; });
+    setTimeout(() => {
+      [...commEl.children].forEach((el,k) => setTimeout(() => el.classList.remove("down"), k*180));
+    }, 450);
+    primary.textContent = "確認開牌";
+    updateSelect();
+    resultEl.innerHTML = `<div class="sub">看公牌，從 A–P 挑 2 張你記得的牌，湊出最大牌型。</div>`;
+  }
+  function toggle(i){
+    if (state !== "select") return;
+    const k = picks.indexOf(i);
+    if (k >= 0) picks.splice(k,1);
+    else if (picks.length < 2) picks.push(i);
+    else { picks.shift(); picks.push(i); }
+    updateSelect();
+  }
+  function updateSelect(){
+    [...boardEl.children].forEach((el,i) => el.classList.toggle("sel", picks.includes(i)));
+    primary.disabled = picks.length !== 2;
+    clearBtn.hidden = picks.length === 0;
+    const chosen = picks.map(i => LETTERS[i]).join("、");
+    statusEl.innerHTML = picks.length
+      ? `已選 <strong>${chosen}</strong>（${picks.length}/2）`
+      : `<strong>選 2 張牌</strong>，點牌或按鍵盤字母`;
+  }
+
+  // ---------- reveal ----------
+  function confirmPick(){
+    state = "announce";
+    primary.disabled = true;
+    clearBtn.hidden = true;
+    const els = [...boardEl.children];
+    els.forEach(el => { el.disabled = true; el.classList.remove("sel"); });
+    const mine = evaluate([grid[picks[0]], grid[picks[1]], ...community]);
+    const ranked = rankAll();
+    const myEntry = ranked.find(p => (p.i === Math.min(...picks) && p.j === Math.max(...picks)));
+    const top = ranked[0];
+    const isBest = myEntry.rank === 1;
+
+    picks.forEach(i => { els[i].classList.add("mine"); els[i].classList.remove("down"); });
+    statusEl.innerHTML = `<strong>開牌</strong>`;
+
+    // Announce the player's hand first, then reveal the rest of the board
+    setTimeout(() => {
+      const ov = document.createElement("div");
+      ov.className = "announce"; ov.id = "announce";
+      ov.innerHTML = `<div class="box">
+        <span class="k">你的牌型</span>
+        <span class="h">${HANDS[mine.cat]}</span>
+        <span class="d">${picks.map(i => cardName(grid[i])).join("  ")}　+　${community.map(cardName).join("  ")}</span>
+        <span class="tap">點一下看全部牌</span></div>`;
+      ov.addEventListener("click", () => closeAnnounce());
+      wrapEl.appendChild(ov);
+      pending = setTimeout(closeAnnounce, 2600);
+    }, 650);
+
+    // Stash what the reveal needs
+    revealData = {els, mine, ranked, myEntry, top, isBest};
+
+    stats.rounds++;
+    if (isBest) stats.perfect++;
+    if (mine.cat > stats.top) stats.top = mine.cat;
+    $("rounds").textContent = stats.rounds;
+    $("perfect").textContent = stats.perfect;
+    $("topHand").textContent = HANDS[stats.top];
+  }
+  let revealData = null;
+
+  function closeAnnounce(silent){
+    clearTimeout(pending); pending = null;
+    const ov = $("announce"); if (ov) ov.remove();
+    if (silent || state !== "announce" || !revealData) return;
+    finishReveal();
+  }
+
+  function finishReveal(){
+    state = "result";
+    const {els, mine, ranked, myEntry, top, isBest} = revealData;
+    const topPairs = ranked.filter(p => p.rank === 1);
+
+    boardEl.classList.add("show-tags");
+    els.forEach((el,i) => {
+      if (picks.includes(i)) return;
+      setTimeout(() => el.classList.remove("down"), 40*i);
+      el.classList.add("dim");
+    });
+    if (!isBest){
+      [top.i, top.j].forEach(i => { els[i].classList.add("best"); els[i].classList.remove("dim"); });
+    }
+
+    renderLadder(mine.cat, top.e.cat);
+    renderTop5(ranked, myEntry);
+
+    const myLetters = picks.map(i => LETTERS[i]).join(" + ");
+    const ties = topPairs.length > 1 ? `（共 ${topPairs.length} 組並列）` : "";
+    resultEl.innerHTML = `
+      <div class="hand">${HANDS[mine.cat]}</div>
+      <div class="sub">你選 <b>${myLetters}</b>：${describe(mine)}，在 120 組中排第 <b>${myEntry.rank}</b> 名</div>
+      ${isBest
+        ? `<div class="verdict ok">你選到了本局最大的組合${ties}。</div>`
+        : `<div class="verdict miss">本局第一名是 <b>${LETTERS[top.i]} + ${LETTERS[top.j]}</b>，${HANDS[top.e.cat]}（${describe(top.e)}）${ties}。</div>`}
+    `;
+    statusEl.innerHTML = `<strong>本局結束</strong>，全部牌已翻開`;
+    if (matchMedia("(max-width:820px)").matches) setTimeout(() => resultEl.scrollIntoView({behavior:"smooth", block:"start"}), 900);
+    primary.textContent = "再來一局";
+    primary.disabled = false;
+  }
+
+  function renderTop5(ranked, myEntry){
+    const row = p => {
+      const you = p === myEntry;
+      return `<li class="${p.rank===1?"first":""} ${you?"you":""}">
+        <span class="no">${p.rank}</span>
+        <span class="pair">${LETTERS[p.i]} + ${LETTERS[p.j]}</span>
+        <span class="what"><b>${HANDS[p.e.cat]}</b><span>${cardName(grid[p.i])} ${cardName(grid[p.j])}・${describe(p.e)}</span></span>
+      </li>`;
+    };
+    const five = ranked.slice(0,5);
+    let html = five.map(row).join("");
+    if (!five.includes(myEntry)) html += `<li class="gap">⋯</li>` + row(myEntry);
+    top5El.innerHTML = html;
+    top5Empty.hidden = true;
+  }
+
+  primary.addEventListener("click", () => {
+    if (state === "idle" || state === "result") startMemorize();
+    else if (state === "memorize") flipDown();
+    else if (state === "select" && picks.length === 2) confirmPick();
+  });
+  clearBtn.addEventListener("click", () => { picks = []; updateSelect(); });
+  document.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (state === "announce" && (e.key === "Enter" || e.key === " " || e.key === "Escape")){ closeAnnounce(); e.preventDefault(); return; }
+    if (state === "select"){
+      const i = LETTERS.indexOf(e.key.toUpperCase());
+      if (e.key.length === 1 && i >= 0){ toggle(i); e.preventDefault(); }
+      else if (e.key === "Enter" && picks.length === 2 && document.activeElement?.tagName !== "BUTTON"){ confirmPick(); e.preventDefault(); }
+    }
+  });
+
+  // Idle table: show backs so the layout reads before the first deal
+  (function idle(){
+    const d = deck();
+    grid = d.slice(0,16); community = d.slice(16,19);
+    grid.forEach((c,i) => { const el = makeCard(c, LETTERS[i], false); el.disabled = true; el.tabIndex = -1; boardEl.appendChild(el); });
+    community.forEach(c => { const el = makeCard(c, "", false); el.disabled = true; el.tabIndex = -1; commEl.appendChild(el); });
+    renderLadder();
+  })();
+})();
+</script>
+
+</body>
+</html>
