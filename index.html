@@ -112,8 +112,27 @@ h1 em{font-style:normal; color:var(--brass)}
 .cardtxt.r{color:var(--suit-red)}
 
 /* ---------- host ---------- */
-.host-table{display:grid; grid-template-columns:minmax(0,560px) minmax(0,1fr); gap:28px; align-items:start}
-@media (max-width:900px){ .host-table{grid-template-columns:minmax(0,1fr)} }
+/* Board width is capped by screen height so the whole 4×4 board, community cards and button fit without scrolling */
+.host-table{
+  --boardW:max(300px, min(560px, calc(71vh - 170px)));
+  --boardW:max(300px, min(560px, calc(71dvh - 170px)));
+  display:grid; grid-template-columns:minmax(0,var(--boardW)) minmax(0,1fr); gap:28px; align-items:start;
+}
+.host-table .side > .join{order:0} .host-table .side > .row{order:1} .host-table .side > .modes{order:2} .host-table .side > .plist{order:3}
+/* During a round: community + button first, QR shrinks and drops to the bottom (still scannable for late joiners) */
+.host-table.live .side > .row{order:0} .host-table.live .side > .plist{order:1} .host-table.live .side > .modes{order:2} .host-table.live .side > .join{order:3}
+@media (max-width:900px){
+  .host-table{
+    --boardW:max(280px, min(560px, calc(71vh - 290px)));
+    --boardW:max(280px, min(560px, calc(71dvh - 290px)));
+    display:flex; flex-direction:column; align-items:stretch; gap:18px;
+  }
+  .host-table .side{display:contents}
+  .host-table .board-wrap{order:1; width:100%; max-width:var(--boardW); margin-inline:auto}
+  .host-table .side > .row{order:0; justify-content:space-between; width:100%; max-width:max(var(--boardW), 520px); margin-inline:auto}
+  .host-table .side > .plist{order:2} .host-table .side > .modes{order:3} .host-table .side > .join{order:4}
+  .host-table:not(.live) .side > .join{order:-1}
+}
 .board-wrap{display:flex; flex-direction:column; gap:12px}
 .status{display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:15px; color:var(--muted); min-height:30px}
 .status strong{color:var(--text); font-weight:500}
@@ -196,6 +215,35 @@ h1 em{font-style:normal; color:var(--brass)}
 .place b{color:var(--brass-soft); font-family:var(--font-mono); font-size:22px}
 .wins{font-family:var(--font-mono); color:var(--brass-soft)}
 .error{color:var(--warn); font-size:14px; margin:0}
+
+/* ---------- host on a phone: board fills the width, community cards + button in one compact row ---------- */
+@media (max-width:560px){
+  #host{gap:12px; padding-block:10px 32px}
+  #host h1{font-size:24px}
+  #host .meta{font-size:12px; gap:10px}
+  .host-table{
+    --boardW:min(100%, max(220px, calc(71vh - 165px)));
+    --boardW:min(100%, max(220px, calc(71dvh - 165px)));
+    gap:12px;
+  }
+  .host-table .side > .row{flex-wrap:nowrap; align-items:flex-end; gap:12px}
+  .host-table .side > .row .label{margin-bottom:6px}
+  .community{grid-template-columns:repeat(3,minmax(0,60px)); gap:6px}
+  .host-table .actions .btn{padding:10px 16px; font-size:14px; white-space:nowrap}
+  .board-wrap{gap:8px}
+  .status{font-size:13px; min-height:24px}
+  .status .timer{font-size:20px}
+  .board{gap:8px 6px; padding:12px 8px 8px; border-radius:12px}
+  .board-best{font-size:13px}
+  .join{padding:12px; gap:12px}
+  .join-text .url{display:none}
+  .join-text .code{font-size:26px}
+  .compact .qr{width:84px; height:84px; padding:5px}
+  .compact .qr img,.compact .qr canvas{width:74px!important; height:74px!important}
+  .lb li{grid-template-columns:24px minmax(0,1fr) auto; gap:8px; padding:8px 10px}
+  .lb .pl{font-size:16px}
+  .lb .hand{font-size:18px}
+}
 
 /* ---------- modes ---------- */
 .modes{display:flex; flex-direction:column; gap:10px; padding:14px; border-radius:14px; background:rgba(0,0,0,.2); box-shadow:inset 0 0 0 1px var(--line)}
@@ -296,7 +344,7 @@ h1 em{font-style:normal; color:var(--brass)}
         <p class="mode-desc" id="modeDesc"></p>
       </div>
 
-      <div>
+      <div class="plist">
         <p class="label" id="panelLabel">玩家</p>
         <ul class="players" id="playerList"></ul>
         <p class="empty" id="noPlayers">還沒有人加入。玩家用手機掃 QR code，輸入暱稱即可加入。</p>
@@ -740,6 +788,7 @@ h1 em{font-style:normal; color:var(--brass)}
     }
     function renderControls(){
       const st = $("hStatus");
+      document.querySelector(".host-table").classList.toggle("live", phase !== "lobby");
       primary.disabled = false;
       const tag = mode.chips && (matchActive || phase !== "lobby") ? `第 ${matchRound}/${matchLen} 局　` : "";
       if (phase === "lobby"){ primary.textContent = mode.chips ? "開始新的一場" : "開始第 1 局"; st.innerHTML = "<strong>等待玩家掃碼加入</strong>"; }
